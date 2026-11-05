@@ -13,6 +13,7 @@ Uso:
   deskrab_bridge.py usb         volta para o cabo (desliga o Wi-Fi do display)
   deskrab_bridge.py lang pt|en  idioma do display (ele reinicia)
   deskrab_bridge.py factory     teste de fabrica no display; registra em ~/.deskrab/factory.csv
+  deskrab_bridge.py update [--force] [--file X]   grava o firmware que veio com o plugin (Wi-Fi ou cabo)
   deskrab_bridge.py serve       processo em segundo plano que fala com o display
   deskrab_bridge.py stop        encerra o serve
   deskrab_bridge.py pause       serve solta a COM (para gravar o firmware) e espera
@@ -181,7 +182,7 @@ def parse_id(buf):
 def set_device(info, via=None):
     global _dev_info
     via = via or _dev_info.get("via")
-    _dev_info = {k: info.get(k) for k in ("fw", "lang", "id") if info.get(k)}
+    _dev_info = {k: info.get(k) for k in ("fw", "lang", "id", "ota") if info.get(k)}
     _dev_info["via"] = via
     write_json(DEVICE_FILE, _dev_info)
 
@@ -1303,6 +1304,148 @@ def cmd_factory():
     return 0 if ok else 2
 
 
+def firmware_file():
+    """Caminho do deskrab.bin que vem com o plugin (ou None)."""
+    info = latest_firmware()
+    f = os.path.join(os.path.dirname(FW_INFO_FILE), info.get("file") or "firmware/deskrab.bin")
+    return f if os.path.isfile(f) else None
+
+
+def ota_send(dev, data, chunk=512, window=4):
+    """Manda o firmware pelo protocolo ota_* (USB ou TCP pareado). Reenvia do ultimo pedaco
+    confirmado se algo se perder. Devolve (ok, motivo)."""
+    import base64
+    rx = [b""]
+
+    def msgs(timeout):
+        t0, out = time.time(), []
+        while time.time() - t0 < timeout and not out:
+            n = dev.in_waiting
+            if n:
+                rx[0] += dev.read(n)
+            else:
+                time.sleep(0.003)
+            *lines, rx[0] = rx[0].split(b"\n")
+            for ln in lines:
+                if b'"t":"ota"' in ln:
+                    try:
+                        out.append(json.loads(ln.strip()))
+                    except ValueError:
+                        pass
+        return out
+
+    send = lambda m: dev.write((json.dumps(m, separators=(",", ":")) + "\n").encode())
+    send({"t": "ota_begin", "size": len(data)})
+    r = msgs(20)
+    if not r or r[-1].get("st") != "ready":
+        return False, (r[-1].get("why") if r else "o display nao respondeu ao inicio")
+    acked, nxt, tries, shown, t0 = 0, 0, 0, -1, time.time()
+    while acked < len(data):
+        while nxt < len(data) and nxt - acked < window * chunk:
+            piece = data[nxt:nxt + chunk]
+            send({"t": "ota_d", "o": nxt, "d": base64.b64encode(piece).decode()})
+            nxt += len(piece)
+        got = msgs(3)
+        if not got:
+            tries += 1
+            if tries > 6:
+                send({"t": "ota_abort"})
+                return False, "o display parou de responder"
+            nxt = acked   # reenvia do ultimo confirmado
+            continue
+        tries = 0
+        for m in got:
+            st = m.get("st")
+            if st == "ack":
+                acked = max(acked, int(m.get("o") or 0))
+            elif st == "resend":
+                acked = nxt = int(m.get("o") or 0)
+            elif st in ("err", "aborted"):
+                return False, m.get("why") or st
+        pct = 100 * acked // len(data)
+        if pct // 10 != shown:
+            shown = pct // 10
+            print("  %3d%%  (%.0f s)" % (pct, time.time() - t0), flush=True)
+    send({"t": "ota_end"})
+    r = msgs(30)
+    if r and r[-1].get("st") == "done":
+        return True, ""
+    return False, (r[-1].get("why") if r else "sem resposta no fim")
+
+
+def cmd_update(argv):
+    """update [--force] [--file deskrab.bin]: grava no display o firmware que veio com o plugin,
+    pelo Wi-Fi (se configurado) ou pelo cabo. O display grava na outra particao e reinicia;
+    se o firmware novo nao subir, ele volta sozinho para o anterior."""
+    import argparse
+    ap = argparse.ArgumentParser(prog="deskrab_bridge.py update")
+    ap.add_argument("--force", action="store_true", help="grava mesmo se a versao for a mesma")
+    ap.add_argument("--file")
+    a = ap.parse_args(argv)
+    path = a.file or firmware_file()
+    newest = latest_firmware().get("version") if not a.file else "(arquivo)"
+    if not path or not os.path.isfile(path):
+        print("este plugin nao trouxe o arquivo do firmware; atualize pela pagina:", latest_firmware().get("page", ""))
+        return 1
+    dev_info = read_json(DEVICE_FILE) or {}
+    if not dev_info.get("ota"):
+        print("o firmware %s deste display ainda nao atualiza sozinho: grave uma vez pela pagina (cabo USB):"
+              % dev_info.get("fw", "?"))
+        print(" ", latest_firmware().get("page", ""))
+        return 1
+    if not a.force and not a.file and ver_tuple(dev_info.get("fw")) >= ver_tuple(newest):
+        print("o display ja esta no firmware %s (o mais novo deste plugin)" % dev_info.get("fw"))
+        return 0
+    with open(path, "rb") as f:
+        data = f.read()
+    if len(data) < 1024 or data[0] != 0xE9:   # magic da imagem de app do ESP32
+        print("isso nao parece um firmware do Deskrab:", path)
+        return 1
+    want = None if a.file else latest_firmware().get("sha256")
+    if want:
+        import hashlib
+        if hashlib.sha256(data).hexdigest() != want:
+            print("o arquivo do firmware no plugin esta corrompido; reinstale o plugin (/plugin update deskrab@deskrab)")
+            return 1
+    cfg = read_json(CONFIG_FILE) or {}
+    cmd_pause()   # o serve solta a conexao (USB ou TCP)
+    ok, why, via = False, "display nao encontrado (cabo? Wi-Fi?)", "?"
+    try:
+        dev = find_net_device(cfg) if cfg.get("transport") == "wifi" else None
+        if dev is not None:
+            via = "Wi-Fi"
+        else:
+            import serial
+            from serial.tools import list_ports
+            dev = find_device(serial, list_ports)
+            via = "USB"
+        if dev is not None:
+            print("gravando %s (%d KB) pelo %s: %s" % (newest, len(data) // 1024, via,
+                  "uns 30 s" if via == "Wi-Fi" else "uns 3 min"), flush=True)
+            ok, why = ota_send(dev, data)
+            close_device(dev)
+    finally:
+        cmd_resume()
+    if not ok:
+        print("nao atualizou: %s. O display continua no firmware de antes." % why)
+        return 1
+    print("gravado; o display esta reiniciando no firmware novo...", flush=True)
+    t0 = time.time()
+    while time.time() - t0 < 90:
+        time.sleep(2)
+        try:   # o display reiniciou e se apresentou de novo depois da gravacao
+            fresh = os.path.getmtime(DEVICE_FILE) > t0 + 2
+        except OSError:
+            fresh = False
+        now = read_json(DEVICE_FILE) or {}
+        if fresh and now.get("fw"):
+            print("ok: display no firmware %s e conectado. Calibracao, Wi-Fi e configuracoes continuam." % now["fw"])
+            return 0
+    print("o display nao voltou em 90 s. Se o firmware novo falhar, ele volta sozinho para o anterior;")
+    print("veja deskrab_bridge.py status.")
+    return 1
+
+
 def cmd_lang(v):
     """Troca o idioma do display (pt ou en); ele reinicia para aplicar."""
     if v not in ("pt", "en"):
@@ -1796,6 +1939,8 @@ def main():
         cmd_usb()
     elif cmd == "factory":
         return cmd_factory()
+    elif cmd == "update":
+        return cmd_update(sys.argv[2:])
     elif cmd == "lang" and len(sys.argv) > 2:
         return cmd_lang(sys.argv[2])
     elif cmd == "hooks-json":

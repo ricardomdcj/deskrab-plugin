@@ -1,4 +1,7 @@
 {
-  "version": "0.3.0",
-  "page": "https://ricardomdcj.github.io/deskrab-plugin/"
+  "version": "0.4.0",
+  "page": "https://ricardomdcj.github.io/deskrab-plugin/",
+  "file": "firmware/deskrab.bin",
+  "size": 1332640,
+  "sha256": "b39b7ad39500d9e4e1c1dde0a59bde4b0c43c832319bc9421d5576b45004356b"
 }

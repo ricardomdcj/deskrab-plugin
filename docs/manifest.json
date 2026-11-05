@@ -1,6 +1,6 @@
 {
   "name": "Deskrab",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "new_install_prompt_erase": true,
   "builds": [
     {
@@ -15,8 +15,12 @@
           "offset": 32768
         },
         {
+          "path": "firmware/ota_data_initial.bin",
+          "offset": 61440
+        },
+        {
           "path": "firmware/deskrab.bin",
-          "offset": 65536
+          "offset": 131072
         }
       ]
     }

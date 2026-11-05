@@ -97,7 +97,16 @@ The display restarts in a few seconds. The user can also change it on the displa
 
 Then open a new session. If `/plugin` offers automatic updates for the `deskrab` marketplace, the user can turn them on there instead.
 
-**Firmware.** `status` prints `firmware: X -> ha o Y` when the plugin carries newer firmware than the display has, and the display's details screen shows the "Device" / "Aparelho" row in yellow. New firmware is installed from the browser, with nothing to install: https://ricardomdcj.github.io/deskrab-plugin/ (Chrome or Edge on a computer, display on the USB cable). Before flashing, stop the bridge so it releases the port: `"PY" "${CLAUDE_PLUGIN_ROOT}/scripts/deskrab_bridge.py" pause`, and afterwards `resume`. Touch calibration, Wi-Fi and settings survive the update.
+**Firmware.** `status` prints `firmware: X -> ha o Y` when the plugin carries newer firmware than the display has, and the display's details screen shows the "Device" / "Aparelho" row in yellow. The plugin carries the firmware file, so the bridge can install it. Tell the user it takes about 30 s over Wi-Fi or about 3 min over the cable, that the display must stay powered, and ask before starting:
+
+```
+"PY" "${CLAUDE_PLUGIN_ROOT}/scripts/deskrab_bridge.py" update
+```
+
+It writes the new firmware to the display's spare slot and restarts it. If the new firmware fails to start, the display goes back to the previous one by itself. Touch calibration, Wi-Fi and settings are kept.
+
+- `ainda nao atualiza sozinho`: the display has firmware older than 0.4.0. It needs one update from the browser page over the cable: https://ricardomdcj.github.io/deskrab-plugin/ (Chrome or Edge on a computer). Before that, release the port with `"PY" "${CLAUDE_PLUGIN_ROOT}/scripts/deskrab_bridge.py" pause`, and afterwards run `resume`.
+- The same page also explains updating over Wi-Fi from any browser (the display serves an upload page at `http://<its IP>/` and asks for a tap on YES).
 
 ## Uninstall
 

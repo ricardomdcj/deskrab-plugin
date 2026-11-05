@@ -13,8 +13,11 @@ repo `../deskrab` (github.com/ricardomdcj/deskrab).
   `LICENSE`, `THIRD_PARTY_NOTICES.md`.
 - Never commit firmware source code here, only the `.bin` images.
 - The firmware page uses ESP Web Tools pinned to `esp-web-tools@10.3.0` (jsDelivr). The manifest
-  flashes separate parts (bootloader 0x1000, partition table 0x8000, app 0x10000) so the device's
-  NVS (touch calibration, Wi-Fi) survives updates.
+  flashes separate parts (bootloader 0x1000, partition table 0x8000, otadata 0xF000, app at ota_0
+  0x20000) so the device's NVS (touch calibration, Wi-Fi) survives updates.
+- `plugin/firmware/deskrab.bin` is the app image the bridge installs over the air
+  (`deskrab_bridge.py update`); `docs/firmware/deskrab.bin` is the same file, linked for the
+  browser upload to the display's own page (`http://<ip>/`).
 - Customers install with `/plugin marketplace add ricardomdcj/deskrab-plugin`, then
   `/plugin install deskrab@deskrab` and `/deskrab:setup`.
 - The user writes in Portuguese. Commit messages in Portuguese, with the Co-Authored-By line.

@@ -56,36 +56,47 @@
 <body>
 <main>
   <h1><span>Deskrab</span> · firmware</h1>
-  <p class="lead">Instale ou atualize o firmware do display direto pelo navegador, sem instalar nada.</p>
+  <p class="lead">Atualize o firmware do display sem instalar nada. Escolha um dos três jeitos.
+    <span id="version"></span></p>
 
   <section class="card">
-    <h2>Antes de começar</h2>
-    <ol>
-      <li>Use o <strong>Chrome</strong> ou o <strong>Edge</strong> num computador (o celular não funciona).</li>
-      <li>Ligue o display no computador com o cabo USB (um cabo de dados, não só de carga).</li>
-      <li>Libere a porta: no Claude Code, peça <em>"pause o Deskrab para atualizar o firmware"</em>, ou rode
-        <code>deskrab_bridge.py pause</code>.</li>
-    </ol>
+    <h2>1. Pelo Claude Code (o mais fácil)</h2>
+    <p class="note" style="margin:0">Peça ao Claude: <em>"atualize o firmware do Deskrab"</em>. O plugin já traz o firmware
+      novo e grava pelo Wi-Fi (uns 30 s) ou pelo cabo (uns 3 min). Antes, atualize o plugin:</p>
+<pre>/plugin marketplace update deskrab
+/plugin update deskrab@deskrab</pre>
   </section>
 
   <section class="card install">
-    <h2>Instalar</h2>
+    <h2>2. Pelo cabo, aqui no navegador</h2>
+    <ol>
+      <li>Use o <strong>Chrome</strong> ou o <strong>Edge</strong> num computador (o celular não funciona).</li>
+      <li>Ligue o display com o cabo USB (um cabo de dados, não só de carga).</li>
+      <li>Libere a porta: no Claude Code, peça <em>"pause o Deskrab"</em> (ou rode <code>deskrab_bridge.py pause</code>).</li>
+      <li>Clique em instalar e escolha a porta do display (CH340 ou USB Serial).</li>
+      <li>Depois, peça <em>"retome o Deskrab"</em> (ou <code>deskrab_bridge.py resume</code>).</li>
+    </ol>
     <esp-web-install-button manifest="manifest.json">
       <button slot="activate" class="btn">Instalar firmware</button>
       <span slot="unsupported" class="warn">Este navegador não tem Web Serial. Abra esta página no Chrome ou no Edge, num computador.</span>
       <span slot="not-allowed" class="warn">A página precisa ser aberta por HTTPS.</span>
     </esp-web-install-button>
-    <p class="note" id="version">Versão disponível: carregando…</p>
-    <p class="note">Escolha a porta do display na lista (CH340 ou USB Serial). A calibração do toque e o Wi-Fi
-      continuam salvos, a menos que você marque a opção de apagar o aparelho.</p>
+    <p class="note">A calibração do toque, o Wi-Fi e as configurações continuam salvos, a menos que você marque a
+      opção de apagar o aparelho. Displays com firmware anterior ao 0.4.0 precisam passar uma vez por aqui:
+      é essa versão que traz a atualização pelo Claude Code e pelo Wi-Fi.</p>
   </section>
 
   <section class="card">
-    <h2>Depois</h2>
+    <h2>3. Pelo Wi-Fi, no navegador</h2>
+    <p class="note" style="margin:0 0 6px">Para displays já conectados ao Wi-Fi (firmware 0.4.0 ou mais novo).</p>
     <ol>
-      <li>Volte ao Claude Code e peça <em>"retome o Deskrab"</em> (ou rode <code>deskrab_bridge.py resume</code>).</li>
-      <li>O caranguejo reconecta em alguns segundos.</li>
+      <li>Baixe o arquivo: <a href="firmware/deskrab.bin" download>deskrab.bin</a>.</li>
+      <li>No display, deslize até a tela de detalhes: a linha <em>Aparelho</em> mostra o endereço (por exemplo
+        <code>192.168.0.12</code>).</li>
+      <li>Num computador ou celular na mesma rede, abra <code>http://</code> + esse endereço, escolha o arquivo e envie.</li>
+      <li>Toque em <strong>SIM</strong> no display para confirmar. Ele grava e reinicia sozinho.</li>
     </ol>
+    <p class="note">O display só aceita o firmware depois do seu toque, então ninguém na rede grava nada sem você.</p>
   </section>
 
   <section class="card">
@@ -103,7 +114,7 @@
 </main>
 <script>
   fetch("manifest.json").then(r => r.json()).then(m => {
-    document.getElementById("version").textContent = "Versão disponível: " + m.version;
+    document.getElementById("version").textContent = "Versão mais nova: " + m.version + ".";
   }).catch(() => {
     document.getElementById("version").textContent = "";
   });

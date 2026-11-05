@@ -41,7 +41,7 @@ O plugin, no Claude Code:
 /plugin update deskrab@deskrab
 ```
 
-Cada versão do plugin traz junto a versão do firmware. Quando o display estiver com um firmware mais antigo, a linha "Aparelho" da tela de detalhes fica amarela.
+Cada versão do plugin traz junto o firmware. Quando o display estiver com um firmware mais antigo, a linha "Aparelho" da tela de detalhes fica amarela: peça ao Claude "atualize o firmware do Deskrab" e ele grava pelo Wi-Fi ou pelo cabo.
 
 O firmware: abra **https://ricardomdcj.github.io/deskrab-plugin/** no Chrome ou no Edge, com o display no cabo USB, e clique em instalar. Não precisa instalar nada no computador, e a calibração do toque, o Wi-Fi e as configurações continuam salvos.
 
