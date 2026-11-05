@@ -70,15 +70,34 @@ The network goes to the display over the cable, along with a pairing code that o
 
 If the router later gives the display another IP address, the bridge finds it again by itself (UDP broadcast on port 7778). Firewalls that block local traffic can stop that. The display listens on TCP port 7777.
 
+## 6. Language
+
+The display speaks Portuguese or English (new units start in Portuguese). If the user writes in another language than the display shows, offer to switch:
+
+```
+"PY" "${CLAUDE_PLUGIN_ROOT}/scripts/deskrab_bridge.py" lang pt      # or: lang en
+```
+
+The display restarts in a few seconds. The user can also change it on the display: swipe to the details screen, tap the gear, then "Language" / "Idioma".
+
 ## Linux and macOS notes
 
 - Linux: the user must be in the `dialout` group to open the serial port (`sudo usermod -aG dialout $USER`, then log out and back in). If ModemManager grabs the port right after it's plugged in, wait a few seconds.
 - If the display restarts every time the bridge connects over USB, tell the user it's harmless (the board resets when the port opens on some systems). Wi-Fi mode avoids it.
 - macOS: the display shows up as `/dev/cu.usbserial-*` or `/dev/cu.wchusbserial-*`. Recent macOS versions include the CH340 driver.
 
-## Firmware updates
+## Updates
 
-New firmware is installed from the browser, with nothing to install: https://ricardomdcj.github.io/deskrab-plugin/ (Chrome or Edge on a computer, display on the USB cable). Before flashing, stop the bridge so it releases the port: `"PY" "${CLAUDE_PLUGIN_ROOT}/scripts/deskrab_bridge.py" pause`, and afterwards `resume`.
+**Plugin.** Each plugin version ships with the matching firmware version. To update, in Claude Code:
+
+```
+/plugin marketplace update deskrab
+/plugin update deskrab@deskrab
+```
+
+Then open a new session. If `/plugin` offers automatic updates for the `deskrab` marketplace, the user can turn them on there instead.
+
+**Firmware.** `status` prints `firmware: X -> ha o Y` when the plugin carries newer firmware than the display has, and the display's details screen shows the "Device" / "Aparelho" row in yellow. New firmware is installed from the browser, with nothing to install: https://ricardomdcj.github.io/deskrab-plugin/ (Chrome or Edge on a computer, display on the USB cable). Before flashing, stop the bridge so it releases the port: `"PY" "${CLAUDE_PLUGIN_ROOT}/scripts/deskrab_bridge.py" pause`, and afterwards `resume`. Touch calibration, Wi-Fi and settings survive the update.
 
 ## Uninstall
 

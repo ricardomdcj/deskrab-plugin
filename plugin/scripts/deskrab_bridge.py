@@ -11,6 +11,8 @@ Uso:
   deskrab_bridge.py status      diz se o serve esta rodando e em qual porta esta o display
   deskrab_bridge.py wifi --ssid NOME [--password SENHA]   manda a rede pelo USB e passa a usar o Wi-Fi
   deskrab_bridge.py usb         volta para o cabo (desliga o Wi-Fi do display)
+  deskrab_bridge.py lang pt|en  idioma do display (ele reinicia)
+  deskrab_bridge.py factory     teste de fabrica no display; registra em ~/.deskrab/factory.csv
   deskrab_bridge.py serve       processo em segundo plano que fala com o display
   deskrab_bridge.py stop        encerra o serve
   deskrab_bridge.py pause       serve solta a COM (para gravar o firmware) e espera
@@ -41,6 +43,11 @@ STATE_DIR = os.environ.get("DESKRAB_HOME") or os.path.join(os.path.expanduser("~
 STABLE_BRIDGE = os.path.join(STATE_DIR, "deskrab_bridge.py")   # copia fixa usada pela status line
 PREV_SL_FILE = os.path.join(STATE_DIR, "prev_statusline.json")  # status line que o usuario ja tinha
 CONFIG_FILE = os.path.join(STATE_DIR, "config.json")   # transporte: usb ou wifi (host, porta, codigo, id)
+DEVICE_FILE = os.path.join(STATE_DIR, "device.json")   # o que o display disse no id: fw, idioma, id
+OUTBOX_FILE = os.path.join(STATE_DIR, "outbox.json")   # mensagens para o display (factory, lang); o serve envia
+FACT_FILE = os.path.join(STATE_DIR, "factory_result.json")   # ultimo resultado do teste de fabrica
+FACT_LOG = os.path.join(STATE_DIR, "factory.csv")     # historico dos testes de fabrica (uma linha por unidade)
+FW_INFO_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "firmware.json")   # firmware publicado junto
 SESS_DIR = os.path.join(STATE_DIR, "sessions")
 LOCK_FILE = os.path.join(STATE_DIR, "serve.lock")
 PID_FILE = os.path.join(STATE_DIR, "serve.pid")
@@ -84,10 +91,113 @@ _dot_order = []
 # ---------------------------------------------------------------- utilitarios
 
 def ascii_text(s, maxlen):
-    """A fonte do display so tem ASCII: remove acentos e corta o texto."""
-    s = unicodedata.normalize("NFKD", str(s or "")).encode("ascii", "ignore").decode()
-    s = " ".join(s.split())
+    """Texto para o display: ASCII e Latin-1 (os acentos do portugues, que a fonte tem desde o
+    firmware 0.3.0); o resto vira o equivalente sem acento ou some. Corta em maxlen."""
+    out = []
+    for ch in unicodedata.normalize("NFC", str(s or "")):
+        o = ord(ch)
+        if 0x20 <= o < 0x7F or 0xA0 <= o <= 0xFF or ch.isspace():
+            out.append(ch)
+        else:
+            out.append(unicodedata.normalize("NFKD", ch).encode("ascii", "ignore").decode())
+    s = " ".join("".join(out).split())
     return s if len(s) <= maxlen else s[: maxlen - 3] + "..."
+
+
+def fold_ascii(s):
+    """So ASCII, para firmware antigo (sem a fonte com acentos)."""
+    return unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode()
+
+
+def ver_tuple(v):
+    try:
+        return tuple(int(x) for x in str(v).split("."))
+    except (TypeError, ValueError):
+        return (0,)
+
+
+# ---------------------------------------------------------------- idioma do display
+# O display diz o idioma no "id"; os rotulos saem daqui em ingles e sao traduzidos no envio.
+
+_dev_info = {}   # fw, lang, id do display conectado (o serve atualiza)
+
+LABELS_PT = {"Ready": "Pronto", "Thinking": "Pensando", "Running": "Executando", "Editing": "Editando",
+             "Reading": "Lendo", "Searching": "Buscando", "Fetching": "Baixando",
+             "Searching the web": "Pesquisando na web", "Delegating": "Delegando", "Planning": "Planejando",
+             "Compacting": "Compactando", "Needs you!": "Precisa de você!", "Done": "Feito!",
+             "API error": "Erro na API"}
+DETAILS_PT = {"squeezing the context": "espremendo o contexto"}
+ACH_PT = {"First prompt of the day!": "Primeiro prompt do dia!",
+          "Night owl: coding after midnight": "Coruja: codando de madrugada",
+          "Marathon: a 1-hour turn!": "Maratona: um turno de 1 hora!"}
+
+
+def old_firmware():
+    return ver_tuple(_dev_info.get("fw")) < (0, 3, 0)
+
+
+def localize(frame):
+    """Traduz o rotulo e o detalhe para o idioma do display; tira acentos para firmware antigo."""
+    if _dev_info.get("lang") == "pt":
+        lbl = frame.get("lbl") or ""
+        if lbl in LABELS_PT:
+            frame["lbl"] = LABELS_PT[lbl]
+        elif lbl.startswith("Allow ") and lbl.endswith("?"):
+            frame["lbl"] = "Permitir %s?" % lbl[6:-1]
+        elif lbl.startswith("Using "):
+            frame["lbl"] = "Usando " + lbl[6:]
+        frame["det"] = DETAILS_PT.get(frame.get("det") or "", frame.get("det") or "")
+    if old_firmware():
+        for k, v in list(frame.items()):
+            if isinstance(v, str):
+                frame[k] = fold_ascii(v)
+    return frame
+
+
+def ach_text(t):
+    if _dev_info.get("lang") == "pt":
+        m = re.match(r"(\d+) prompts today!$", t)
+        if m:
+            t = "%s prompts hoje!" % m.group(1)
+        m = re.match(r"([\d,]+) lines today!$", t)
+        if m:
+            t = "%s linhas hoje!" % m.group(1).replace(",", ".")
+        t = ACH_PT.get(t, t)
+    t = ascii_text(t, 40)
+    return fold_ascii(t) if old_firmware() else t
+
+
+def parse_id(buf):
+    """O {"t":"id",...} do display, so de linhas completas."""
+    for ln in buf.split(b"\n")[:-1]:
+        if b'"t":"id"' in ln:
+            try:
+                return json.loads(ln.strip())
+            except ValueError:
+                pass
+    return {}
+
+
+def set_device(info, via=None):
+    global _dev_info
+    via = via or _dev_info.get("via")
+    _dev_info = {k: info.get(k) for k in ("fw", "lang", "id") if info.get(k)}
+    _dev_info["via"] = via
+    write_json(DEVICE_FILE, _dev_info)
+
+
+def latest_firmware():
+    """{"version": ..., "page": ...} do firmware publicado junto com este plugin, ou {}."""
+    return read_json(FW_INFO_FILE) or {}
+
+
+def queue_to_device(msg):
+    """Deixa uma mensagem para o serve mandar ao display (USB ou Wi-Fi)."""
+    os.makedirs(STATE_DIR, exist_ok=True)
+    box = read_json(OUTBOX_FILE) or {"msgs": []}
+    box["msgs"] = (box.get("msgs") or []) + [msg]
+    box["t"] = time.time()
+    write_json(OUTBOX_FILE, box)
 
 
 def write_json(path, data):
@@ -912,8 +1022,10 @@ def find_device(serial, list_ports):
         buf, t0 = b"", time.time()
         while time.time() - t0 < 2.0:
             buf += s.read(256)
-            if b'"name":"deskrab"' in buf or b'"name":"cyd_claude"' in buf:   # firmware antigo
-                log("conectado em %s" % p.device)
+            info = parse_id(buf)
+            if info.get("name") in ("deskrab", "cyd_claude"):   # cyd_claude = firmware antigo
+                set_device(info, p.device)
+                log("conectado em %s (firmware %s, idioma %s)" % (p.device, info.get("fw"), info.get("lang", "en")))
                 with open(PORT_FILE, "w") as f:
                     f.write(p.device)
                 return s
@@ -924,7 +1036,13 @@ def find_device(serial, list_ports):
 def handle_device_msg(msg):
     """Mensagens que o CYD manda (toques que precisam do PC)."""
     global _pinned
-    if msg.get("t") == "sel":
+    if msg.get("t") == "id":   # o display reiniciou com a porta aberta (ex.: trocou o idioma)
+        set_device(msg)
+        log("display reiniciou (firmware %s, idioma %s)" % (msg.get("fw"), msg.get("lang", "en")))
+    elif msg.get("t") == "fact":
+        write_json(FACT_FILE, dict(msg, received=time.time()))
+        log("teste de fabrica: %s" % ("aprovado" if msg.get("ok") else "reprovado"))
+    elif msg.get("t") == "sel":
         i = msg.get("i", -1)
         sid = _dot_order[i] if isinstance(i, int) and 0 <= i < len(_dot_order) else None
         _pinned = None if sid == _pinned else sid   # tocar de novo solta
@@ -1040,7 +1158,9 @@ def net_connect(host, port, code):
         if not d:
             break
         buf += d
-        if b'"name":"deskrab"' in buf:
+        info = parse_id(buf)
+        if info.get("name") == "deskrab":
+            set_device(info, "wifi:" + host)
             return NetDevice(s, host)
         if b'"why":"code"' in buf:
             s.close()
@@ -1147,6 +1267,53 @@ def cmd_wifi(argv):
     return 1
 
 
+def cmd_factory():
+    """Roda o teste de fabrica no display e registra o resultado em ~/.deskrab/factory.csv."""
+    ensure_serve()
+    try:
+        os.remove(FACT_FILE)
+    except OSError:
+        pass
+    queue_to_device({"t": "factory"})
+    print("teste enviado: siga a tela do display (1 calibracao, 2 cinco alvos, 3 cores, 4 sensor de luz).")
+    t0, res = time.time(), None
+    while time.time() - t0 < 360 and not res:
+        res = read_json(FACT_FILE)
+        time.sleep(0.5)
+    if not res:
+        print("sem resultado em 6 min: o display esta conectado? (deskrab_bridge.py status)")
+        return 1
+    ok = bool(res.get("ok"))
+    errs = res.get("touch") or []
+    yn = lambda v: "OK" if v else "FALHOU"
+    print("unidade %s, firmware %s: %s" % (res.get("id"), res.get("fw"), "APROVADA" if ok else "REPROVADA"))
+    print("  calibracao do toque:", yn(res.get("cal")))
+    print("  toque nos 5 alvos: %s (erros em px: %s)" % (yn(res.get("touch_ok")), " ".join(str(e) for e in errs)))
+    print("  cores e LED:", yn(res.get("colors")))
+    print("  sensor de luz: %s a %s (so informativo)" % (res.get("ldr_min"), res.get("ldr_max")))
+    new = not os.path.exists(FACT_LOG)
+    with open(FACT_LOG, "a", encoding="utf-8") as f:
+        if new:
+            f.write("data,id,firmware,resultado,calibracao,toque,erros_px,cores,luz_min,luz_max\n")
+        f.write("%s,%s,%s,%s,%d,%d,%s,%d,%s,%s\n" % (
+            time.strftime("%Y-%m-%d %H:%M"), res.get("id"), res.get("fw"), "aprovada" if ok else "reprovada",
+            bool(res.get("cal")), bool(res.get("touch_ok")), " ".join(str(e) for e in errs),
+            bool(res.get("colors")), res.get("ldr_min"), res.get("ldr_max")))
+    print("registrado em", FACT_LOG)
+    return 0 if ok else 2
+
+
+def cmd_lang(v):
+    """Troca o idioma do display (pt ou en); ele reinicia para aplicar."""
+    if v not in ("pt", "en"):
+        print("uso: deskrab_bridge.py lang pt|en")
+        return 1
+    ensure_serve()
+    queue_to_device({"t": "lang", "v": v})
+    print("ok: o display reinicia em %s em alguns segundos" % ("portugues" if v == "pt" else "ingles"))
+    return 0
+
+
 def cmd_usb():
     """Volta para o cabo: desliga o Wi-Fi do display (se ele estiver no USB) e muda o transporte."""
     cfg = read_json(CONFIG_FILE) or {}
@@ -1199,9 +1366,10 @@ def cmd_serve():
                 continue
             last_frame, last_sent, last_ping, last_rx = None, 0.0, time.time(), time.time()
             last_hist = 0.0
+            fw_told = None
         try:
             now = time.time()
-            frame = build_frame(now)
+            frame = localize(build_frame(now))
             cmp = dict(frame, ts=0)
             if cmp != last_frame or now - last_sent >= HEARTBEAT_S:
                 dev.write((json.dumps(frame, separators=(",", ":")) + "\n").encode())
@@ -1212,9 +1380,24 @@ def cmd_serve():
             if now - last_ach >= ACH_SEND_S:
                 text = pop_achievement()
                 if text:
-                    dev.write((json.dumps({"t": "ach", "txt": ascii_text(text, 40)}) + "\n").encode())
+                    dev.write((json.dumps({"t": "ach", "txt": ach_text(text)}) + "\n").encode())
                     log("conquista: " + text)
                 last_ach = now
+            newest = latest_firmware().get("version")
+            if newest and fw_told != _dev_info.get("fw"):   # de novo se o display reiniciou
+                fw_told = _dev_info.get("fw")
+                if ver_tuple(newest) > ver_tuple(fw_told):
+                    dev.write((json.dumps({"t": "fwnew", "v": newest}) + "\n").encode())
+                    log("firmware %s no display, ha o %s: %s" % (fw_told, newest, latest_firmware().get("page", "")))
+            box = read_json(OUTBOX_FILE) if os.path.exists(OUTBOX_FILE) else None
+            if box is not None:
+                try:
+                    os.remove(OUTBOX_FILE)
+                except OSError:
+                    pass
+                if now - box.get("t", 0) < 60:
+                    for m in box.get("msgs") or []:
+                        dev.write((json.dumps(m) + "\n").encode())
             play = read_json(PLAY_FILE) if os.path.exists(PLAY_FILE) else None
             if play is not None:
                 try:
@@ -1577,6 +1760,14 @@ def cmd_status(wait=False):
     else:
         print("transporte: USB")
     print("display:", ("conectado em %s" % port) if port else "nao encontrado (cabo USB? Wi-Fi? outro programa usando a porta?)")
+    dev = read_json(DEVICE_FILE) or {}
+    if dev.get("fw"):
+        newest = latest_firmware()
+        note = ""
+        if newest.get("version") and ver_tuple(newest["version"]) > ver_tuple(dev["fw"]):
+            note = "  -> ha o %s: atualize em %s" % (newest["version"], newest.get("page", ""))
+        print("firmware: %s%s" % (dev["fw"], note))
+        print("idioma do display:", {"pt": "portugues", "en": "ingles"}.get(dev.get("lang"), "ingles"))
     print("dados em:", STATE_DIR)
 
 
@@ -1603,6 +1794,10 @@ def main():
         return cmd_wifi(sys.argv[2:])
     elif cmd == "usb":
         cmd_usb()
+    elif cmd == "factory":
+        return cmd_factory()
+    elif cmd == "lang" and len(sys.argv) > 2:
+        return cmd_lang(sys.argv[2])
     elif cmd == "hooks-json":
         print(json.dumps(hooks_json(), indent=2))
     elif cmd == "serve":

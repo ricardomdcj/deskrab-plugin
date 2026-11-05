@@ -28,9 +28,22 @@ O `/deskrab:setup` encontra o seu Python, instala a linha de status (se você j�
 
 Com o display no cabo, peça Wi-Fi no `/deskrab:setup`. O nome e a senha da rede vão para o display pelo cabo, junto com um código de pareamento que só o seu computador recebe. Depois o cabo pode ir para qualquer carregador USB. O display só enxerga redes de **2,4 GHz**, e o computador precisa estar na mesma rede.
 
-## Atualizar o firmware
+## Idioma
 
-Abra **https://ricardomdcj.github.io/deskrab-plugin/** no Chrome ou no Edge, com o display no cabo USB, e clique em instalar. Não precisa instalar nada no computador.
+O display fala português ou inglês. Troque na engrenagem da tela de detalhes ("Idioma" / "Language"), ou peça ao Claude no `/deskrab:setup`.
+
+## Atualizar
+
+O plugin, no Claude Code:
+
+```
+/plugin marketplace update deskrab
+/plugin update deskrab@deskrab
+```
+
+Cada versão do plugin traz junto a versão do firmware. Quando o display estiver com um firmware mais antigo, a linha "Aparelho" da tela de detalhes fica amarela.
+
+O firmware: abra **https://ricardomdcj.github.io/deskrab-plugin/** no Chrome ou no Edge, com o display no cabo USB, e clique em instalar. Não precisa instalar nada no computador, e a calibração do toque, o Wi-Fi e as configurações continuam salvos.
 
 ## Problemas
 
@@ -60,7 +73,9 @@ This repository holds the Claude Code plugin that feeds the display, and the fir
 
 `/deskrab:setup` finds your Python, installs the status line (an existing one keeps showing), checks the display and asks whether to use USB or Wi-Fi (2.4 GHz only; the network is sent over the cable together with a pairing code). Open a new Claude Code session afterwards.
 
-**Firmware updates:** open https://ricardomdcj.github.io/deskrab-plugin/ in Chrome or Edge with the display on USB.
+**Language:** Portuguese or English, from the gear on the details screen or through `/deskrab:setup`.
+
+**Updates:** `/plugin marketplace update deskrab` and `/plugin update deskrab@deskrab`. Firmware: open https://ricardomdcj.github.io/deskrab-plugin/ in Chrome or Edge with the display on USB (calibration, Wi-Fi and settings are kept).
 
 **Privacy:** everything stays on your computer and your local network.
 
