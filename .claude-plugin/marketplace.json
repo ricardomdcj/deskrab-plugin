@@ -1,0 +1,12 @@
+{
+  "name": "deskrab",
+  "description": "Deskrab: a desk companion for Claude Code on a small USB or Wi-Fi display",
+  "owner": { "name": "ricardomdcj" },
+  "plugins": [
+    {
+      "name": "deskrab",
+      "source": "./plugin",
+      "description": "Desk companion for Claude Code on a small USB or Wi-Fi display"
+    }
+  ]
+}

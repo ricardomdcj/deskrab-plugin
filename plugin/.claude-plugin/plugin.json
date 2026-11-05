@@ -1,0 +1,19 @@
+{
+  "name": "deskrab",
+  "displayName": "Deskrab",
+  "version": "0.2.0",
+  "description": "Desk companion for Claude Code: a pixel crab on a small USB display shows what Claude is doing, with your usage limits",
+  "author": { "name": "ricardomdcj" },
+  "repository": "https://github.com/ricardomdcj/deskrab-plugin",
+  "homepage": "https://ricardomdcj.github.io/deskrab-plugin/",
+  "license": "MIT",
+  "keywords": ["display", "companion", "status", "hardware"],
+  "userConfig": {
+    "python": {
+      "type": "string",
+      "title": "Python",
+      "description": "Full path of the Python 3 that runs the Deskrab bridge. Run /deskrab:setup to fill it in automatically.",
+      "default": "python3"
+    }
+  }
+}

@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deskrab · firmware</title>
+<meta name="description" content="Instale ou atualize o firmware do Deskrab pelo navegador.">
+<script type="module" src="https://cdn.jsdelivr.net/npm/esp-web-tools@10.3.0/dist/web/install-button.js"></script>
+<style>
+  :root {
+    --bg: #f7f5f2; --card: #ffffff; --text: #1d1b19; --dim: #6b655f; --line: #e6e1db;
+    --accent: #d9693c; --accent-text: #ffffff; --code: #f1ece6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141414; --card: #1d1d1d; --text: #e8e8e8; --dim: #9a948e; --line: #2c2c2c;
+      --accent: #f08a5e; --accent-text: #141414; --code: #262626;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 640px; margin: 0 auto; padding: 40px 16px 56px; }
+  h1 { font-size: 28px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  h1 span { color: var(--accent); }
+  .lead { color: var(--dim); margin: 0 0 28px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 20px; margin-bottom: 16px;
+  }
+  h2 { font-size: 17px; margin: 0 0 10px; }
+  ol { margin: 0; padding-left: 20px; }
+  li { margin: 6px 0; }
+  code {
+    background: var(--code); border-radius: 5px; padding: 1px 6px;
+    font: 14px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; word-break: break-word;
+  }
+  pre {
+    background: var(--code); border-radius: 8px; padding: 12px; overflow-x: auto; margin: 10px 0 0;
+    font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .install { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+  .btn {
+    appearance: none; border: 0; border-radius: 8px; padding: 12px 20px; cursor: pointer;
+    background: var(--accent); color: var(--accent-text); font: 600 16px system-ui, sans-serif;
+  }
+  .btn:focus-visible { outline: 3px solid var(--text); outline-offset: 2px; }
+  .note { color: var(--dim); font-size: 14px; }
+  .warn { color: var(--accent); font-weight: 600; }
+  footer { color: var(--dim); font-size: 13px; margin-top: 28px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1><span>Deskrab</span> · firmware</h1>
+  <p class="lead">Instale ou atualize o firmware do display direto pelo navegador, sem instalar nada.</p>
+
+  <section class="card">
+    <h2>Antes de começar</h2>
+    <ol>
+      <li>Use o <strong>Chrome</strong> ou o <strong>Edge</strong> num computador (o celular não funciona).</li>
+      <li>Ligue o display no computador com o cabo USB (um cabo de dados, não só de carga).</li>
+      <li>Libere a porta: no Claude Code, peça <em>"pause o Deskrab para atualizar o firmware"</em>, ou rode
+        <code>deskrab_bridge.py pause</code>.</li>
+    </ol>
+  </section>
+
+  <section class="card install">
+    <h2>Instalar</h2>
+    <esp-web-install-button manifest="manifest.json">
+      <button slot="activate" class="btn">Instalar firmware</button>
+      <span slot="unsupported" class="warn">Este navegador não tem Web Serial. Abra esta página no Chrome ou no Edge, num computador.</span>
+      <span slot="not-allowed" class="warn">A página precisa ser aberta por HTTPS.</span>
+    </esp-web-install-button>
+    <p class="note" id="version">Versão disponível: carregando…</p>
+    <p class="note">Escolha a porta do display na lista (CH340 ou USB Serial). A calibração do toque e o Wi-Fi
+      continuam salvos, a menos que você marque a opção de apagar o aparelho.</p>
+  </section>
+
+  <section class="card">
+    <h2>Depois</h2>
+    <ol>
+      <li>Volte ao Claude Code e peça <em>"retome o Deskrab"</em> (ou rode <code>deskrab_bridge.py resume</code>).</li>
+      <li>O caranguejo reconecta em alguns segundos.</li>
+    </ol>
+  </section>
+
+  <section class="card">
+    <h2>Primeira vez? Instale o plugin</h2>
+    <p class="note" style="margin:0">No Claude Code:</p>
+<pre>/plugin marketplace add ricardomdcj/deskrab-plugin
+/plugin install deskrab@deskrab
+/deskrab:setup</pre>
+  </section>
+
+  <footer>
+    <a href="https://github.com/ricardomdcj/deskrab-plugin">github.com/ricardomdcj/deskrab-plugin</a> ·
+    Instalação pelo navegador feita com <a href="https://esphome.github.io/esp-web-tools/">ESP Web Tools</a>.
+  </footer>
+</main>
+<script>
+  fetch("manifest.json").then(r => r.json()).then(m => {
+    document.getElementById("version").textContent = "Versão disponível: " + m.version;
+  }).catch(() => {
+    document.getElementById("version").textContent = "";
+  });
+</script>
+</body>
+</html>
